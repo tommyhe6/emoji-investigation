@@ -2,7 +2,7 @@ import modal
 
 app = modal.App("qwen3-inference")
 
-MODEL_ID = "Qwen/Qwen3-4B-Instruct-2507"
+MODEL_ID = "Qwen/Qwen3-4B-Base"
 
 
 def download_model():
@@ -25,30 +25,16 @@ class Qwen3Model:
         from transformers import AutoModelForCausalLM, AutoTokenizer
 
         self.tokenizer = AutoTokenizer.from_pretrained(MODEL_ID)
+        self.tokenizer.pad_token_id = self.tokenizer.eos_token_id
         self.model = AutoModelForCausalLM.from_pretrained(MODEL_ID).to("cuda")
 
     @modal.method()
-    def generate_stream(self, messages: list[dict]):
+    def generate_stream(self, prompt: str):
         import threading
 
         from transformers import TextIteratorStreamer
 
-        prompt = self.tokenizer.apply_chat_template(
-            messages,
-            tokenize=False,
-            add_generation_prompt=True,
-        )
         inputs = self.tokenizer([prompt], return_tensors="pt")
-
-        # Debug: print tokenization breakdown
-        # token_ids = inputs['input_ids'][0].tolist()
-        # print("Tokenization breakdown:")
-        # for token_id in token_ids:
-        #     token_str = self.tokenizer.decode([token_id])
-        #     token_bytes = token_str.encode('utf-8').hex()
-        #     print(f"Token ID: {token_id:5d} | Bytes: {token_bytes:20s} | Text: {repr(token_str)}")
-        # print("-" * 80)
-
         inputs = inputs.to(self.model.device)
 
         streamer = TextIteratorStreamer(
@@ -113,52 +99,20 @@ items = [
 @app.local_entrypoint()
 def main():
     model = Qwen3Model()
-    ITEM = "refrigerator"
+    ITEM = "narwhal"
     prompts = [
-        [
-            {
-                "role": "user",
-                "content": f"Is there an official {ITEM} emoji in Unicode?",
-            },
-        ],
-        [
-            {
-                "role": "user",
-                "content": f"Is there a {ITEM} emoji?",
-            },
-        ],
-        #
-        [
-            {
-                "role": "user",
-                "content": f"Show me just the {ITEM} emoji? Only return an emoji nothing else.",
-            },
-        ],
-        [
-            {
-                "role": "user",
-                "content": f"""Show me just the {ITEM} emoji? Only return an emoji if it exists, or else "None".""",
-            },
-        ],
-        #
-        [
-            {
-                "role": "user",
-                "content": f"What is the {ITEM} emoji?",
-            },
-        ],
-        [
-            {
-                "role": "user",
-                "content": f"What does the {ITEM} emoji look like?",
-            },
-        ],
+        f"""Is there an official {ITEM} emoji in Unicode?""",
+        f"""Is there a {ITEM} emoji?""",
+        f"""Show me just the {ITEM} emoji? Only return an emoji nothing else.""",
+        f"""Show me just the {ITEM} emoji? Only return an emoji if it exists, or else "None".""",
+        f"""What is the {ITEM} emoji?""",
+        f"""What does the {ITEM} emoji look like?""",
     ]
-    for messages in prompts:
+    for prompt in prompts:
         syn = ""
-        print(f"""{messages[0]["content"]}""", end="")
+        print(prompt, end="")
         print("\n" + "-" * 50 + "\n")
-        for token in model.generate_stream.remote_gen(messages):
+        for token in model.generate_stream.remote_gen(prompt):
             syn += token
         print(syn)
         print("\n" + "=" * 50 + "\n")
